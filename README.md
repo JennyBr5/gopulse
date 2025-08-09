@@ -29,9 +29,10 @@ A modern toolkit for visualizing, tracing, and debugging goroutine lifecycles an
 - [Contributing](#contributing)
 - [License](#license)
 
-## Screenshot
+## Screenshots
 
 ![GoPulse UI Demo](assets/demo.png)
+![GoPulse UI Demo](assets/demo2.png)
 
 A live snapshot of the in-app UI showing goroutine states, channel activity, and performance summaries.
 
