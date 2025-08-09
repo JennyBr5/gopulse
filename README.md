@@ -283,45 +283,6 @@ for i := 0; i < 10; i++ {
     })
 }
 ```
-## Environment Variables
-Configure GoPulse behavior via environment variables:
-```bash
-    # Default output destination  
-    export GOPULSE_OUTPUT=stdout              # or file path
-    export GOPULSE_OUTPUT=/tmp/app-trace.log
-    
-    # Enable runtime/trace integration (experimental)
-    export GOPULSE_RUNTIME_TRACE=1
-    
-    # Enable deadlock watchdog (emits hints after 5s of inactivity)
-    export GOPULSE_DETECT_DEADLOCK=1
-```
-## Cross-Compilation
-GoPulse builds standalone binaries with no CGO dependencies:
-```bash
-    # Linux AMD64
-    GOOS=linux GOARCH=amd64 go build -o dist/gopulse-linux-amd64 ./cmd/gopulse
-    
-    # Linux ARM64  
-    GOOS=linux GOARCH=arm64 go build -o dist/gopulse-linux-arm64 ./cmd/gopulse
-    
-    # macOS Intel
-    GOOS=darwin GOARCH=amd64 go build -o dist/gopulse-darwin-amd64 ./cmd/gopulse
-    
-    # macOS Apple Silicon
-    GOOS=darwin GOARCH=arm64 go build -o dist/gopulse-darwin-arm64 ./cmd/gopulse
-    
-    # Windows AMD64
-    GOOS=windows GOARCH=amd64 go build -o dist/gopulse-windows-amd64.exe ./cmd/gopulse
-    
-    # Windows ARM64
-    GOOS=windows GOARCH=arm64 go build -o dist/gopulse-windows-arm64.exe ./cmd/gopulse
-
-```
-For maximum compatibility, explicitly disable CGO:
-```bash
-  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o gopulse-linux ./cmd/gopulse
-```
 ## Troubleshooting
 ### Common Issues
 **No events appearing:**
