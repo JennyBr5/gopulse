@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # needed for changelog and proper version info
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -43,9 +43,7 @@ jobs:
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
-          # Pin to the latest v2.x of GoReleaser (action message “lock to ~> v2” is normal).
           version: latest
-          # Add --debug to get full logs if anything fails.
-          args: release --clean --debug
+          args: release --clean --verbose
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
