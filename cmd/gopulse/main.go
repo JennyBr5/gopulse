@@ -34,8 +34,6 @@ func init() {
 		date = d
 	}
 
-	// 2) Auto-detect from build info when built with `go install module@version`
-	// or when VCS info is embedded (Go 1.18+). Only fill missing/default values.
 	if info, ok := debug.ReadBuildInfo(); ok {
 		// Main version e.g. "v1.0.0" when installed as `go install ...@v1.0.0`
 		if (version == "" || version == "dev") && info.Main.Version != "" {

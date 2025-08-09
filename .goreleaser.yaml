@@ -11,23 +11,14 @@ builds:
     binary: gopulse
     env:
       - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-      - freebsd
-    goarch:
-      - amd64
-      - arm64
+    goos: [linux, darwin, windows, freebsd]
+    goarch: [amd64, arm64]
+    # Keep ldflags as a single string to avoid any parser edge cases
     ldflags:
-      - -s -w
-      # Ensure these variables exist in your main package (see note below)
-      - -X main.version={{.Version}}
-      - -X main.commit={{.Commit}}
-      - -X main.date={{.Date}}
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
 archives:
-  - id: archives
+  - id: default
     builds: [gopulse]
     format_overrides:
       - goos: windows
@@ -56,6 +47,3 @@ release:
     name: gopulse
   draft: false
   prerelease: false
-
-sboms:
-  - artifacts: archive
