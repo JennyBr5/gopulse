@@ -28,11 +28,11 @@ var (
 	gm         sync.Map     // map[realGID]logicalID
 
 	// live broadcasting
-	bmu          sync.RWMutex
-	subscribers  map[chan Event]struct{}
-	buffer       []Event // ring buffer of recent events
-	bufferSize   = 1000
-	lastEventTS  atomic.Pointer[time.Time]
+	bmu         sync.RWMutex
+	subscribers map[chan Event]struct{}
+	buffer      []Event // ring buffer of recent events
+	bufferSize  = 1000
+	lastEventTS atomic.Pointer[time.Time]
 
 	// for deadlock detection (simple heuristic)
 	starts sync.Map // gid -> struct{}
@@ -68,8 +68,12 @@ func Start(opts ...Config) error {
 
 	// init broadcaster
 	bmu.Lock()
-	if subscribers == nil { subscribers = make(map[chan Event]struct{}) }
-	if buffer == nil { buffer = make([]Event, 0, bufferSize) }
+	if subscribers == nil {
+		subscribers = make(map[chan Event]struct{})
+	}
+	if buffer == nil {
+		buffer = make([]Event, 0, bufferSize)
+	}
 	bmu.Unlock()
 
 	started.Store(true)
@@ -115,9 +119,9 @@ func Stop() error {
 func Go(fn func()) {
 	gid := nextGID()
 	go func() {
-		real := realGID()
-		gm.Store(real, gid)
-		emit(Event{Time: now(), Type: EventGStart, GID: gid, Details: details(map[string]any{"real_gid": real})})
+		_real := realGID()
+		gm.Store(_real, gid)
+		emit(Event{Time: now(), Type: EventGStart, GID: gid, Details: details(map[string]any{"real_gid": _real})})
 		defer func() {
 			if r := recover(); r != nil {
 				emit(Event{Time: now(), Type: EventGStop, GID: gid, Details: details(map[string]any{"panic": fmt.Sprint(r)})})
@@ -141,13 +145,13 @@ func Block(reason string) func() {
 
 // LogicalGID returns the logical id used by this package for the current goroutine.
 func LogicalGID() int64 {
-	real := realGID()
-	if v, ok := gm.Load(real); ok {
+	gid := realGID()
+	if v, ok := gm.Load(gid); ok {
 		return v.(int64)
 	}
 	// main goroutine or untracked: allocate a stable id for it once
 	id := nextGID()
-	gm.Store(real, id)
+	gm.Store(gid, id)
 	return id
 }
 
@@ -312,7 +316,6 @@ func dirname(p string) string {
 	return ""
 }
 
-
 // --- Live UI server (in-process) ---
 
 // UI starts a lightweight HTTP server that serves the live UI at addr (e.g., ":8080" or "127.0.0.1:8080").
@@ -334,7 +337,10 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	fl, ok := w.(http.Flusher)
-	if !ok { http.Error(w, "streaming unsupported", http.StatusInternalServerError); return }
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
 
 	// send buffer snapshot first
 	bmu.RLock()
@@ -350,7 +356,9 @@ func sseHandler(w http.ResponseWriter, r *http.Request) {
 	// subscribe for live events
 	ch := make(chan Event, 256)
 	bmu.Lock()
-	if subscribers == nil { subscribers = make(map[chan Event]struct{}) }
+	if subscribers == nil {
+		subscribers = make(map[chan Event]struct{})
+	}
 	subscribers[ch] = struct{}{}
 	bmu.Unlock()
 	defer func() {
@@ -379,11 +387,17 @@ func deadlockWatchdog() {
 	defer ticker.Stop()
 	timeout := 5 * time.Second
 	for range ticker.C {
-		if !started.Load() { return }
+		if !started.Load() {
+			return
+		}
 		// last event time
 		lt := lastEventTS.Load()
-		if lt == nil { continue }
-		if time.Since(*lt) < timeout { continue }
+		if lt == nil {
+			continue
+		}
+		if time.Since(*lt) < timeout {
+			continue
+		}
 		// compute leaked gids: in starts but not in stops
 		var leaked []int64
 		starts.Range(func(key, value any) bool {
@@ -393,7 +407,9 @@ func deadlockWatchdog() {
 			}
 			return true
 		})
-		if len(leaked) == 0 { continue }
+		if len(leaked) == 0 {
+			continue
+		}
 		// emit a hint
 		emit(Event{Time: now(), Type: EventDeadlock, GID: 0, Details: details(map[string]any{"leaked": leaked, "hint": "No events for a while; goroutines without stop detected"})})
 	}
