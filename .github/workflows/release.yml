@@ -1,4 +1,3 @@
-# .github/workflows/release.yml
 name: release
 on:
   push:
@@ -7,7 +6,6 @@ on:
 
 permissions:
   contents: write
-  packages: write   # needed if Docker images are pushed to GHCR
 
 jobs:
   release:
@@ -16,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # required for proper changelog and version info
+          fetch-depth: 0  # needed for changelog and proper version info
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -34,28 +32,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Go tests
-        run: go test ./...
-
-      # Optional: enable multi-arch Docker builds (if using "dockers" in goreleaser)
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: ${{ !cancelled() }}
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify build + tests
+        run: |
+          go env
+          go version
+          go mod download
+          go build ./...
+          go test ./...
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
+          # Pin to the latest v2.x of GoReleaser (action message “lock to ~> v2” is normal).
           version: latest
-          args: release --clean
+          # Add --debug to get full logs if anything fails.
+          args: release --clean --debug
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

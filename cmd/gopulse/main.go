@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -15,21 +16,91 @@ import (
 	tracepkg "github.com/cploutarchou/gopulse/trace"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
+func init() {
+	// 1) Allow env overrides (useful for local testing or custom builds)
+	if v := strings.TrimSpace(os.Getenv("GOPULSE_VERSION")); v != "" {
+		version = v
+	}
+	if c := strings.TrimSpace(os.Getenv("GOPULSE_COMMIT")); c != "" {
+		commit = c
+	}
+	if d := strings.TrimSpace(os.Getenv("GOPULSE_DATE")); d != "" {
+		date = d
+	}
+
+	// 2) Auto-detect from build info when built with `go install module@version`
+	// or when VCS info is embedded (Go 1.18+). Only fill missing/default values.
+	if info, ok := debug.ReadBuildInfo(); ok {
+		// Main version e.g. "v1.0.0" when installed as `go install ...@v1.0.0`
+		if (version == "" || version == "dev") && info.Main.Version != "" {
+			version = info.Main.Version
+		}
+		// Scan VCS settings for commit and time.
+		var vcsRev, vcsTime string
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				vcsRev = s.Value
+			case "vcs.time":
+				vcsTime = s.Value
+			}
+		}
+		if (commit == "" || commit == "none") && vcsRev != "" {
+			commit = vcsRev
+		}
+		if (date == "" || date == "unknown") && vcsTime != "" {
+			// Normalize to RFC3339 if possible, else keep as-is.
+			if t, err := time.Parse(time.RFC3339, vcsTime); err == nil {
+				date = t.UTC().Format(time.RFC3339)
+			} else {
+				date = vcsTime
+			}
+		}
+	}
+}
+
 func main() {
 	log.SetFlags(0)
+
+	// Global version flags: gopulse --version | -v
+	if len(os.Args) >= 2 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		printVersion()
+		return
+	}
+
 	if len(os.Args) < 2 {
 		usage()
 		return
 	}
+
 	sub := os.Args[1]
 	switch sub {
 	case "analyze":
 		analyzeCmd(os.Args[2:])
 	case "web":
 		webCmd(os.Args[2:])
+	case "version":
+		printVersion()
 	default:
 		usage()
 	}
+}
+
+func printVersion() {
+	fmt.Printf("gopulse %s (commit %s) built %s\n", version, short(commit), date)
+}
+
+func short(s string) string {
+	if len(s) > 7 {
+		return s[:7]
+	}
+	return s
 }
 
 func usage() {
@@ -37,6 +108,7 @@ func usage() {
 	fmt.Println("\nUsage:")
 	fmt.Println("  gopulse analyze <events.log>")
 	fmt.Println("  gopulse web <events.log> [-addr :8080] [-live]")
+	fmt.Println("  gopulse version | --version | -v")
 }
 
 func analyzeCmd(args []string) {
@@ -83,7 +155,6 @@ func printSummary(events []tracepkg.Event) {
 		if !stopT.IsZero() {
 			status = "finished"
 		} else if startT.IsZero() {
-			// observed events without explicit start/stop (e.g., main goroutine block/unblock)
 			status = "observed"
 		} else {
 			leaked++
@@ -168,14 +239,12 @@ func webCmd(args []string) {
 				case <-notify:
 					return
 				default:
-					// check for new content
 					stat, err := f.Stat()
 					if err != nil {
 						time.Sleep(200 * time.Millisecond)
 						continue
 					}
 					if stat.Size() < offset {
-						// rotated/truncated
 						offset, _ = f.Seek(0, 0)
 						rdr.Reset(f)
 					}
@@ -303,7 +372,6 @@ const indexHTML = `<!doctype html>
 </body>
 </html>`
 
-// Live HTML UI using SSE for CLI tail mode
 const liveIndexHTML = `<!doctype html>
 <html>
 <head>
@@ -355,8 +423,8 @@ const liveIndexHTML = `<!doctype html>
   </table>
 
   <script>
-    const state = new Map(); // gid -> {start, stop, sends, recvs, closes, lastTime, blocked, blockReason}
-    const channels = new Map(); // id -> {sends, recvs, closes}
+    const state = new Map();
+    const channels = new Map();
     let totalEvents = 0;
 
     function upsert(e){
@@ -377,7 +445,6 @@ const liveIndexHTML = `<!doctype html>
     function statusOf(s){ if(s.blocked) return ['blocked'+(s.blockReason?(' ('+s.blockReason+')'):''),'status-blocked']; if(s.stop) return ['finished','status-finished']; if(s.start) return ['running','status-running']; return ['observed','status-observed']; }
 
     function render(){
-      // Summary
       let running=0, finished=0, observed=0, blocked=0;
       for(const s of state.values()){
         if(s.blocked) blocked++; else if(s.stop) finished++; else if(s.start) running++; else observed++;
@@ -389,7 +456,6 @@ const liveIndexHTML = `<!doctype html>
       document.getElementById('sum-finished').textContent = String(finished);
       document.getElementById('sum-observed').textContent = String(observed);
 
-      // Goroutines table
       const tbody=document.getElementById('tbody'); tbody.innerHTML='';
       const gids = Array.from(state.keys()).sort((a,b)=>a-b);
       for(const gid of gids){ const s=state.get(gid); const tr=document.createElement('tr'); const [label, cls]=statusOf(s);
@@ -404,7 +470,6 @@ const liveIndexHTML = `<!doctype html>
         tbody.appendChild(tr);
       }
 
-      // Channels table
       const chbody=document.getElementById('chbody'); chbody.innerHTML='';
       const ids = Array.from(channels.keys()).sort();
       for(const id of ids){ const c = channels.get(id); const tr=document.createElement('tr');
