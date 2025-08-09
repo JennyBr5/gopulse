@@ -1,0 +1,74 @@
+version: 2
+project_name: gopulse
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gopulse
+    main: ./cmd/gopulse
+    binary: gopulse
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: archives
+    builds: [gopulse]
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums_{{ .Version }}.txt"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+
+release:
+  github:
+    owner: cploutarchou
+    name: gopulse
+  draft: false
+  prerelease: false
+
+# Optional: publish a multi‑arch Docker image to GHCR
+dockers:
+  - id: gopulse-ghcr
+    image_templates:
+      - ghcr.io/cploutarchou/gopulse:{{ .Version }}
+      - ghcr.io/cploutarchou/gopulse:latest
+    use: buildx
+    dockerfile: ./Dockerfile
+    build_flag_templates:
+      - --platform=linux/amd64,linux/arm64
+    goos: [linux]
+    goarch: [amd64, arm64]
+
+# Optional: SBOM for archives (good practice)
+sboms:
+  - artifacts: archive
