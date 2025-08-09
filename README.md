@@ -84,21 +84,21 @@ func main() {
 Install the CLI tool:
 
 ```bash 
-  go install github.com/cploutarchou/GoPulse/cmd/gopulse@latest
+  go install github.com/cploutarchou/gopulse/cmd/gopulse@latest
 ```
 Or pin to a specific version:
 ```bash
-  go install github.com/cploutarchou/GoPulse/cmd/gopulse@v1.0.0
+  go install github.com/cploutarchou/gopulse/cmd/gopulse@v1.0.0
 ```
 Add the library to your project:
 ```bash
-  go get github.com/cploutarchou/GoPulse
+  go get github.com/cploutarchou/gopulse
 ```
 ## Basic Usage
 ### 1. Instrument Your Code
 Import and initialize tracing in your application:
 ```go
-import "github.com/cploutarchou/GoPulse/trace"
+import "github.com/cploutarchou/gopulse/trace"
 
 func main() {
     // Start tracing to stdout (or specify a file path)
@@ -220,7 +220,7 @@ Embed a live web UI directly in your application:
 ```go
 import (
     "context"
-    "github.com/cploutarchou/GoPulse/trace"
+    "github.com/cploutarchou/gopulse/trace"
 )
 
 func main() {
@@ -406,7 +406,7 @@ Contributions are welcome! Here's how to get started:
 ### Development Setup
 ```bash
     git clone https://github.com/cploutarchou/gopulse.git
-    cd GoPulse
+    cd gopulse
     go mod tidy
     go test ./...
 ```
@@ -421,5 +421,5 @@ Please use GitHub Issues for:
 MIT License - see [LICENSE](LICENSE) file for details.
 Copyright (c) 2025 Christos Ploutarchou
 
-**Star ⭐ this repo if GoPulse helps you debug concurrent Go applications!**
+**Star ⭐ this repo if gopulse helps you debug concurrent Go applications!**
 
